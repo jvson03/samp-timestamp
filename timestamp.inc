@@ -1,293 +1,119 @@
-// Timestamp.inc by Gammix
-// Version: 2.0 - 29 Jan, 2019 - 9:14:32 PM
-// Special thanks: Crayder (his Time Conversion library was used as a reference)
-#if defined _inc_timestamp_
-    #endinput
-#endif
-#define _inc_timestamp_
+//AbyssMorgan
+//%d:%02d:%02d:%02d (day hour minute second) 
+#define SecToTimeDay(%0)            ((%0) / 86400),(((%0) % 86400) / 3600),((((%0) % 86400) % 3600) / 60),((((%0) % 86400) % 3600) % 60) 
+#define MSToTimeDay(%0)                SecToTimeDay((%0)/1000) 
 
-#define EPOCH_YEAR 1970
+//%02d:%02d:%02d (hour minute second) 
+#define SecToTime(%0)                ((%0) / 3600),(((%0) % 3600) / 60),(((%0) % 3600) % 60) 
+#define MSToTime(%0)                SecToTime((%0)/1000) 
 
-#define MAX_TIMESTAMP_FORMAT_LENGTH 128
+//%02d:%02d (minute second) 
+#define SecToTimeMini(%0)            ((%0) / 60),((%0) % 60) 
+#define MSToTimeMini(%0)            SecToTimeMini((%0)/1000)  
 
-#if defined _inc_timestamp_natives_
-native Timestamp(year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, hourGMT = 0, minuteGMT = 0);
-native ParseTimestamp(timestamp, &year = 0, &month = 0, &day = 0, &hour = 0, &minute = 0, &second = 0, hourGMT = 0, minuteGMT = 0);
 
-native FormatTimestamp(timestamp, const format[], hourGMT = 0, minuteGMT = 0);
-native FormatTimeleft(startTimestamp, endTimestamp);
 
-native ConvertFromSeconds(TimeUnit:type, seconds);
-native ConvertToSeconds(TimeUnit:type, value);
-#endif
+static stock const
+	SECONDS_PER_MINUTE		= 60,
+	SECONDS_PER_HOUR		= 3600,
+	SECONDS_PER_DAY			= 86400,
+	SECONDS_PER_YEAR		= 31556952,	// based on 365.2425 days per year
+	monthdays[12]			= {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
+	//monthnames[12]			= {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"},
+	weekdays[7][10] = {"Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"};
 
-enum TimeUnit {
-    Year,
-    Month,
-    Day,
-    Hour,
-    Minute
-};
+stock stamp2datetime(sec1970, &year, &month, &day, &hour, &minute, &second, gmh = 0, gmm = 0) {
+	new days, seconds;
 
-static const MONTH_DAYS[12]	= {
-    31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
-};
+	for(year = 1970; ; year += 1) {
+		days = (365 + (!(year & 0x03) ? 1 : 0)); // Will fail for 2100
+		seconds = days * SECONDS_PER_DAY;
+		if(seconds > sec1970)
+			break;
+		sec1970 -= seconds;
+	}
 
-static const MONTH_NAMES[12][] = {
-    "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"
-};
+	for(month = 1; ; month += 1) {
+		days = monthdays[month - 1];
+		seconds = days * SECONDS_PER_DAY;
+		if(seconds > sec1970)
+			break;
+		sec1970 -= seconds;
+	}
 
-static stock bool:IsLeapYear(year) {
-    return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+	for(day = 1; sec1970 >= SECONDS_PER_DAY; day += 1)
+		sec1970 -= SECONDS_PER_DAY;
+
+	for(hour = gmh; sec1970 >= SECONDS_PER_HOUR; hour += 1)
+		sec1970 -= SECONDS_PER_HOUR;
+
+	for(minute = gmm; sec1970 >= SECONDS_PER_MINUTE; minute += 1)
+		sec1970 -= SECONDS_PER_MINUTE;
+
+	second = sec1970;
 }
 
-static stock GetMonthDays(month, year) {
-    if (month == 1 && IsLeapYear(year) == true) {
-        return 29;
-    }
+stock datetime2stamp(&sec1970, year, month, day, hour, minute, second, gmh = 0, gmm = 0) {
+	for(new y = 1970; y < year; y++)
+        day += (365 + (!(y & 0x03) ? 1 : 0));
 
-    return MONTH_DAYS[month - 1];
-}
+	for(new m = 1; m < month; m++)
+		day += monthdays[m - 1];
 
-static stock ReplaceString(string[], start, end, const replacement[], size) {
-    strdel(string, start, end);
-    strins(string, replacement, start, size);
-}
-
-stock Timestamp(year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, hourGMT = 0, minuteGMT = 0) {
-    static const
-        SECONDS_PER_MINUTE = 60,
-        SECONDS_PER_HOUR = 3600,
-        SECONDS_PER_DAY = 86400;
-
-    new timestamp = 0;
-
-    if (year == 0 || month == 0 || day == 0) {
-        getdate(year, month, day);
-        gettime(hour, minute, second);
-    }
-
-    for (new i = EPOCH_YEAR; i < year; i++)
-        day += (IsLeapYear(i) == true) ? 365 : 366;
-
-    for (new i = 1; i < month; i++)
-        day += MONTH_DAYS[i - 1];
-
-    if (IsLeapYear(year) == true && month > 2)
+    if(!(year & 0x03) && month > 2)
         day += 1;
+    day -= 1;
+	
+    sec1970 += (day * SECONDS_PER_DAY);
+    sec1970 += ((hour + gmh) * SECONDS_PER_HOUR);
+    sec1970 += ((minute + gmm) * SECONDS_PER_MINUTE);
+    sec1970 += second;
 
-    timestamp += ((day - 1) * SECONDS_PER_DAY);
-    timestamp += ((hour + hourGMT) * SECONDS_PER_HOUR);
-    timestamp += ((minute + minuteGMT) * SECONDS_PER_MINUTE);
-    timestamp += second;
-
-    return timestamp;
+    return sec1970;
 }
 
-stock ParseTimestamp(timestamp, &year = 0, &month = 0, &day = 0, &hour = 0, &minute = 0, &second = 0, hourGMT = 0, minuteGMT = 0) {
-    static const
-        SECONDS_PER_MINUTE = 60,
-        SECONDS_PER_HOUR = 3600,
-        SECONDS_PER_DAY = 86400;
-
-    new days = 0, seconds = 0;
-
-    for (year = EPOCH_YEAR; ; year++) {
-        days = (IsLeapYear(year) == true) ? 365 : 366;
-        seconds = days * SECONDS_PER_DAY;
-
-        if (seconds > timestamp)
-            break;
-
-        timestamp -= seconds;
-    }
-
-    for (month = 1; ; month++) {
-        days = MONTH_DAYS[month - 1];
-        seconds = days * SECONDS_PER_DAY;
-
-        if (seconds > timestamp)
-            break;
-
-        timestamp -= seconds;
-    }
-
-    for (day = 1; timestamp >= SECONDS_PER_DAY; day++)
-        timestamp -= SECONDS_PER_DAY;
-
-    for (hour = hourGMT; timestamp >= SECONDS_PER_HOUR; hour++)
-        timestamp -= SECONDS_PER_HOUR;
-
-    for (minute = minuteGMT; timestamp >= SECONDS_PER_MINUTE; minute++)
-        timestamp -= SECONDS_PER_MINUTE;
-
-    second = timestamp;
+stock weekday(day, month, year) {
+    if (month <= 2) {
+        month += 12;
+		--year;
+	}
+    new j = year % 100;
+    new e = year / 100;
+    return ((day + (month+1)*26/10 + j + j/4 + e/4 - 2*e) % 7);
 }
 
-stock FormatTimestamp(timestamp, const format[], hourGMT = 0, minuteGMT = 0) {
-    new string[MAX_TIMESTAMP_FORMAT_LENGTH];
-    strcat(string, format);
-    
-    new year, month, day, hour, minute, second;
-    ParseTimestamp(timestamp, year, month, day, hour, minute, second, hourGMT, minuteGMT);
-
-    new pos = -1;
-
-    do {
-        // year abbreviated (last 2 chars)
-        if ((pos = strfind(string, "%y")) != -1) {
-            new replacement[4];
-            valstr(replacement, year % 100);
-            ReplaceString(string, pos, pos + 2, replacement, MAX_TIMESTAMP_FORMAT_LENGTH);
-        }
-        // full year
-        else if ((pos = strfind(string, "%Y")) != -1) {
-            new replacement[5];
-            valstr(replacement, year);
-            ReplaceString(string, pos, pos + 2, replacement, MAX_TIMESTAMP_FORMAT_LENGTH);
-        }
-        // month number
-        else if ((pos = strfind(string, "%m")) != -1) {
-            new replacement[4];
-            valstr(replacement, month);
-            ReplaceString(string, pos, pos + 2, replacement, MAX_TIMESTAMP_FORMAT_LENGTH);
-        }
-        // month name abbreviated
-        else if ((pos = strfind(string, "%b")) != -1) {
-            new replacement[4];
-            strcat(replacement, MONTH_NAMES[month - 1]);
-            ReplaceString(string, pos, pos + 2, replacement, MAX_TIMESTAMP_FORMAT_LENGTH);
-        }
-        // full month name
-        else if ((pos = strfind(string, "%B")) != -1) {
-            ReplaceString(string, pos, pos + 2, MONTH_NAMES[month - 1], MAX_TIMESTAMP_FORMAT_LENGTH);
-        }
-        // day
-        else if ((pos = strfind(string, "%d")) != -1) {
-            new replacement[4];
-            valstr(replacement, day);
-            ReplaceString(string, pos, pos + 2, replacement, MAX_TIMESTAMP_FORMAT_LENGTH);
-        }
-        // hour 24H
-        else if ((pos = strfind(string, "%H")) != -1) {
-            new replacement[4];
-            valstr(replacement, hour);
-            ReplaceString(string, pos, pos + 2, replacement, MAX_TIMESTAMP_FORMAT_LENGTH);
-        }
-        // hour 12H
-        else if ((pos = strfind(string, "%I")) != -1) {
-            new replacement[4];
-            valstr(replacement, (hour > 12) ? (hour - 12) : (hour));
-            ReplaceString(string, pos, pos + 2, replacement, MAX_TIMESTAMP_FORMAT_LENGTH);
-        }
-        // hour 12H AM or PM
-        else if ((pos = strfind(string, "%p")) != -1) {
-            ReplaceString(string, pos, pos + 2, (hour > 12) ? ("PM") : ("AM"), MAX_TIMESTAMP_FORMAT_LENGTH);
-        }
-        // minute
-        else if ((pos = strfind(string, "%M")) != -1) {
-            new replacement[4];
-            valstr(replacement, minute);
-            ReplaceString(string, pos, pos + 2, replacement, MAX_TIMESTAMP_FORMAT_LENGTH);
-        }
-        // second
-        else if ((pos = strfind(string, "%S")) != -1) {
-            new replacement[4];
-            valstr(replacement, second);
-            ReplaceString(string, pos, pos + 2, replacement, MAX_TIMESTAMP_FORMAT_LENGTH);
-        }
-    } while (pos != -1);
-    
-    return string;
+stock SecondsInTime(&sec1970, year, month, day, hour, minute, second) {
+    sec1970 += (year * SECONDS_PER_YEAR);
+    sec1970 += (month * SECONDS_PER_DAY * 30);
+    sec1970 += (day * SECONDS_PER_DAY);
+    sec1970 += (hour * SECONDS_PER_HOUR);
+    sec1970 += (minute * SECONDS_PER_MINUTE);
+    sec1970 += second;
+	
+    //sec1970 += (y * 31556952) + (m * 2592000) + (d * 86400) + (h * 3600) + (i * 60) + s;
 }
 
-stock FormatTimeleft(startTimestamp, endTimestamp) {
-    static const
-        SECONDS_PER_MINUTE = 60,
-        SECONDS_PER_HOUR = 3600,
-        SECONDS_PER_DAY = 86400,
-        SECONDS_PER_MONTH = 2592000;
+stock TimeInSeconds(sec1970, &year, &month, &day, &hour, &minute, &second) {
+	#define MINUTES_IN_HOUR 60
+	#define HOURS_IN_DAY 24
+	#define DAYS_IN_WEEK 7
+	#define DAYS_IN_MONTH 30
+	#define DAYS_IN_YEAR 365.2425
 
-    new string[MAX_TIMESTAMP_FORMAT_LENGTH];
-
-    new seconds = endTimestamp - startTimestamp;
-
-    if (seconds == 1)
-        format(string, sizeof(string), "a second");
-    else if (seconds < SECONDS_PER_MINUTE)
-        format(string, sizeof(string), "%i seconds", seconds);
-    else if (seconds < (2 * SECONDS_PER_MINUTE))
-        format(string, sizeof(string), "a minute");
-    else if (seconds < (45 * SECONDS_PER_MINUTE))
-        format(string, sizeof(string), "%i minutes", (seconds / SECONDS_PER_MINUTE));
-    else if (seconds < (90 * SECONDS_PER_MINUTE))
-        format(string, sizeof(string), "an hour");
-    else if (seconds < (24 * SECONDS_PER_HOUR))
-        format(string, sizeof(string), "%i hours", (seconds / SECONDS_PER_HOUR));
-    else if (seconds < (48 * SECONDS_PER_HOUR))
-        format(string, sizeof(string), "a day");
-    else if (seconds < (30 * SECONDS_PER_DAY))
-        format(string, sizeof(string), "%i days", (seconds / SECONDS_PER_DAY));
-    else if (seconds < (12 * SECONDS_PER_MONTH)) {
-        new months = floatround(seconds / SECONDS_PER_DAY / 30);
-        if (months <= 1)
-            format(string, sizeof(string), "a month");
-        else
-            format(string, sizeof(string), "%i months", months);
-    }
-    else {
-        new years = floatround(seconds / SECONDS_PER_DAY / 365);
-        if (years <= 1)
-            format(string, sizeof(string), "a year");
-        else
-            format(string, sizeof(string), "%i years", years);
-    }
-
-    return string;
-}
-
-stock ConvertFromSeconds(TimeUnit:type, seconds) {
-    static const
-        SECONDS_PER_MINUTE = 60,
-        SECONDS_PER_HOUR = 3600,
-        SECONDS_PER_DAY = 86400,
-        SECONDS_PER_YEAR = 31556952;
-
-    switch (type) {
-        case Year:
-            return seconds / SECONDS_PER_YEAR;
-        case Month:
-            return seconds / (SECONDS_PER_DAY * 31);
-        case Day:
-            return seconds / SECONDS_PER_DAY;
-        case Hour:
-            return seconds / SECONDS_PER_HOUR;
-        case Minute:
-            return seconds / SECONDS_PER_MINUTE;
-    }
-
-    return 0;
-}
-
-stock ConvertToSeconds(TimeUnit:type, value) {
-    static const
-        SECONDS_PER_MINUTE = 60,
-        SECONDS_PER_HOUR = 3600,
-        SECONDS_PER_DAY = 86400,
-        SECONDS_PER_YEAR = 31556952;
-
-    switch (type) {
-        case Year:
-            return SECONDS_PER_YEAR * value;
-        case Month:
-            return SECONDS_PER_DAY * (31 * value);
-        case Day:
-            return SECONDS_PER_DAY * value;
-        case Hour:
-            return SECONDS_PER_HOUR * value;
-        case Minute:
-            return SECONDS_PER_MINUTE * value;
-    }
-
-    return 0;
+	second = sec1970 % SECONDS_PER_MINUTE;
+	sec1970 /= SECONDS_PER_MINUTE;
+	minute = sec1970 % MINUTES_IN_HOUR;
+	sec1970 /= MINUTES_IN_HOUR;
+	hour = sec1970 % HOURS_IN_DAY;
+	sec1970 /= HOURS_IN_DAY;
+	day = sec1970 % DAYS_IN_WEEK;
+	sec1970 /= DAYS_IN_WEEK;
+	//week = sec1970 & WEEKS_IN_MONTH;
+	month = sec1970 / WEEKS_IN_MONTH;
+	year = floatround(sec1970 / DAYS_IN_YEAR, floatround_floor);
+	
+	/*seconds = sec1970 % SECONDS_PER_MINUTE;
+	minutes = sec1970 / SECONDS_PER_MINUTE % MINUTES_IN_HOUR;
+	hours = sec1970 / SECONDS_PER_MINUTE / MINUTES_IN_HOUR % HOURS_IN_DAY;
+	days = sec1970 / SECONDS_PER_MINUTE / MINUTES_IN_HOUR / HOURS_IN_DAY;*/
 }
